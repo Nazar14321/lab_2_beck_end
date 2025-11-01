@@ -9,3 +9,10 @@ services:
       PORT: "6060"
     ports:
       - "6060:6060"
+    depends_on:
+      - db
+  db:
+    image: postgres:15.5-alpine3.18
+    environment:
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: test
