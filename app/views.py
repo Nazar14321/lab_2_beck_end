@@ -5,8 +5,18 @@ from . import app
 from zoneinfo import ZoneInfo
 from . import storage
 from datetime import datetime
+
 def err(message,status =400,**extra):
     return jsonify({"error":message,**extra}),status
+def str_valid(s:object) -> str:
+    if not isinstance(s, str):
+        raise ValueError("must be a string")
+    s = s.strip()
+    if not s:
+        raise ValueError("cannot be empty")
+    if len(s) > 256:
+        raise ValueError("too long (max 256)")
+    return s
 
 @app.route("/")
 def hello_world():
@@ -32,12 +42,16 @@ def get_users():
 
 @app.post("/user")
 def add_user():
+    if not request.is_json:
+        return err("Content-Type must be application/json", 415)
     cat_data=request.get_json()
-    if (not cat_data or "name" not in cat_data ):
-        return err("not enough user data",400)
+    try:
+        name = str_valid(cat_data.get("name"))
+    except ValueError as e:
+        return err(f"not enough user data: {e}", 400)
     user_id=max(storage.user_data.keys() or [0]) + 1
-    storage.user_data[user_id]=cat_data["name"]
-    return {"id":user_id, "name":cat_data["name"]}, 201
+    storage.user_data[user_id]=name
+    return {"id":user_id, "name":name}, 201
 
 @app.delete("/user/<int:user_id>")
 def kill_user(user_id:int):
@@ -52,12 +66,16 @@ def get_categories():
 
 @app.post("/category")
 def add_category():
+    if not request.is_json:
+        return err("Content-Type must be application/json", 415)
     cat_data=request.get_json()
-    if (not cat_data or "name" not in cat_data ):
-        return err( "not enough category data")
+    try:
+        name = str_valid(cat_data.get("name"))
+    except ValueError as e:
+        return err(f"not enough category data: {e}", 400)
     record_id=max(storage.category_data.keys() or [0]) + 1
-    storage.category_data[record_id]=cat_data["name"]
-    return {"id":record_id, "name":cat_data["name"]}, 201
+    storage.category_data[record_id]=name
+    return {"id":record_id, "name":name}, 201
 
 @app.delete("/category")
 def kill_category():
@@ -74,7 +92,7 @@ def kill_category():
 def get_record(record_id:int):
     record=storage.records_data.get(record_id)
     if (record is None):
-        return {"error": "record not found"}, 404
+        return err("record not found",404)
     return {"id":record_id,"user_id":record["user_id"],"category_id":record["category_id"],"datetime":record["datetime"],"amount":record["amount"]}, 200
 
 
@@ -88,6 +106,7 @@ def kill_record(record_id:int):
 @app.post("/record")
 def add_record_data():
     cat_data=request.get_json()
+
     if (not cat_data or "user_id" not in cat_data or "category_id" not in cat_data or "datetime" not in cat_data or "amount" not in cat_data ):
         return err("not enough record data")
     record_id=max(storage.records_data.keys() or [0]) + 1
