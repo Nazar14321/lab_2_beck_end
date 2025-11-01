@@ -2,21 +2,28 @@
 
 from flask import request, jsonify
 from . import app
+from zoneinfo import ZoneInfo
 from . import storage
+from datetime import datetime
+def err(message,status =400,**extra):
+    return jsonify({"error":message,**extra}),status
 
 @app.route("/")
 def hello_world():
-    return "<p>Hello, it's me amogus!</p>"
+    return "<p>Hello, it's me amogus!</p>", 200
 
-@app.get("/health")
-def health_check():
-    return{"status":"ok"}
+@app.get("/healthcheck")
+def healthcheck():
+    return jsonify({
+        "status": "OK",
+        "timestamp": datetime.now(ZoneInfo("Europe/Kyiv")).isoformat()
+    }), 200
 
 @app.get("/user/<int:user_id>")
 def get_user(user_id:int):
     user=storage.user_data.get(user_id)
     if (user is None):
-        return {"error": "user not found"}, 404
+        return err("user not found",404)
     return {"id":user_id,"name":user}, 200
 
 @app.get("/users")
@@ -27,7 +34,7 @@ def get_users():
 def add_user():
     cat_data=request.get_json()
     if (not cat_data or "name" not in cat_data ):
-        return {"error": " not enough user data"},400
+        return err("not enough user data",400)
     user_id=max(storage.user_data.keys() or [0]) + 1
     storage.user_data[user_id]=cat_data["name"]
     return {"id":user_id, "name":cat_data["name"]}, 201
@@ -36,7 +43,7 @@ def add_user():
 def kill_user(user_id:int):
     name = storage.user_data.pop(user_id, None)
     if (name is None):
-        return {"error": "user not found"}, 404
+        return err("user not found",404)
     return{"result":f"id: {user_id} successfully deleted","name":name},200
 
 @app.get("/category")
@@ -47,7 +54,7 @@ def get_categories():
 def add_category():
     cat_data=request.get_json()
     if (not cat_data or "name" not in cat_data ):
-        return {"error": " not enough user data"},400
+        return err( "not enough category data")
     record_id=max(storage.category_data.keys() or [0]) + 1
     storage.category_data[record_id]=cat_data["name"]
     return {"id":record_id, "name":cat_data["name"]}, 201
@@ -56,11 +63,11 @@ def add_category():
 def kill_category():
     cat_data=request.get_json()
     if (not cat_data or "id" not in cat_data):
-        return {"error": " incorrect id to delete category_data"},400
+        return err("incorrect id to delete category_data")
     category_id= int(cat_data["id"])
     name= storage.category_data.pop(category_id,None)
     if name is None:
-        return {"error": "category not found"}, 404
+        return err("category not found",404)
     return {"result": f"id: {category_id} successfully deleted", "name": name}, 200
 
 @app.get("/record/<int:record_id>")
@@ -75,14 +82,14 @@ def get_record(record_id:int):
 def kill_record(record_id:int):
     record = storage.records_data.pop(record_id, None)
     if (record is None):
-        return {"error": "record not found"}, 404
+        return err("record not found",404)
     return{"result":f"id: {record_id} successfully deleted","deleted": {"id": record_id, **record}},200
 
 @app.post("/record")
 def add_record_data():
     cat_data=request.get_json()
     if (not cat_data or "user_id" not in cat_data or "category_id" not in cat_data or "datetime" not in cat_data or "amount" not in cat_data ):
-        return {"error": " not enough record data"},400
+        return err("not enough record data")
     record_id=max(storage.records_data.keys() or [0]) + 1
     input_data={"user_id":int(cat_data["user_id"]),"category_id":int(cat_data["category_id"]),"datetime":cat_data["datetime"],"amount":float(cat_data["amount"])}
     storage.records_data[record_id]=input_data
@@ -93,7 +100,7 @@ def find_record_data():
     uid = request.args.get("user_id", type=int)
     cid = request.args.get("category_id", type=int)
     if uid is None and cid is None:
-        return {"error": "provide user_id and/or category_id"}, 400
+        return err("provide user_id and/or category_id")
 
     items = [
         {"id": i, **rec}
