@@ -1,16 +1,24 @@
 from . import db
-
+from sqlalchemy import text
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(256), nullable=False)
     records = db.relationship("Record", back_populates="user", cascade="all, delete-orphan")
+    owner_of_category = db.relationship("Category", back_populates="owner", cascade="all, delete-orphan")
 
 class Category(db.Model):
     __tablename__ = "categories"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(256), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    owner = db.relationship("User", back_populates="owner_of_category")
     records = db.relationship("Record", back_populates="category", cascade="all, delete-orphan")
+    __table_args__ = (
+        db.UniqueConstraint("owner_id", "name", name="uq_category_user_name"),
+        db.Index("Index_category_global_name", "name", unique=True,
+                 postgresql_where=text("owner_id IS NULL")),
+    )
 
 class Record(db.Model):
     __tablename__ = "records"

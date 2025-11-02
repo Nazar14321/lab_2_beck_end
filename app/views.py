@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from marshmallow import ValidationError
 from zoneinfo import ZoneInfo
 from datetime import datetime
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from . import db
 from . import schemas
@@ -64,10 +66,17 @@ def kill_user(user_id: int):
     db.session.commit()
     return jsonify({"result": f"id: {user_id} successfully deleted", "name": name}), 200
 
+
 @bp.get("/category")
 def get_categories():
-    categories = Category.query.order_by(Category.id.asc()).all()
-    items = [{"id": c.id, "name": c.name} for c in categories]
+    uid = request.args.get("user_id", type=int)
+    if uid is None:
+        q = Category.query.filter(Category.owner_id.is_(None))
+    else:
+        q = Category.query.filter(or_(Category.owner_id.is_(None), Category.owner_id == uid))
+
+    categories = q.order_by(Category.owner_id.isnot(None), Category.name.asc()).all()
+    items = [{"id": c.id, "name": c.name, "owner_id": c.owner_id} for c in categories]
     return jsonify(categories_schema.dump(items)), 200
 
 @bp.post("/category")
@@ -78,12 +87,25 @@ def add_category():
         data = category_schema.load(request.get_json() or {})
     except ValidationError as e:
         return err("invalid category data", 400, details=e.messages)
-    category = Category(name=data["name"])
+    payload = request.get_json() or {}
+    if "user_id" not in payload or payload.get("user_id") is None:
+        owner_id = None
+    else:
+        try:
+            owner_id = int(payload.get("user_id"))
+        except (TypeError, ValueError):
+            return err("user_id must be an integer", 400)
+        if User.query.get(owner_id) is None:
+            return err(f"user_id {owner_id} not found", 404)
+    category = Category(name=data["name"], owner_id=owner_id)
     db.session.add(category)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return err("category with this name already exists in scope", 409)
     category_id = category.id
-    return jsonify(category_schema.dump({"id": category_id, **data})), 201
-
+    return jsonify(category_schema.dump({"id": category_id, "name": category.name, "owner_id": owner_id})), 201
 @bp.delete("/category")
 def kill_category():
     if not request.is_json:
@@ -96,10 +118,26 @@ def kill_category():
     category = Category.query.get(cid)
     if category is None:
         return err("category not found", 404)
+    if "user_id" not in payload or payload.get("user_id") is None:
+        if category.owner_id is None:
+            name = category.name
+            db.session.delete(category)
+            db.session.commit()
+            return jsonify({"result": f"id: {cid} successfully deleted", "name": name}), 200
+        return err("user_id is required to delete personal category", 400)
+    try:
+        uid = int(payload.get("user_id"))
+    except (TypeError, ValueError):
+        return err("user_id must be an integer", 400)
+    if category.owner_id is None:
+        return err("to delete a global category omit user_id in request body", 403)
+    if uid != category.owner_id:
+        return err("cannot delete category that does not belong to the user", 403)
     name = category.name
     db.session.delete(category)
     db.session.commit()
     return jsonify({"result": f"id: {cid} successfully deleted", "name": name}), 200
+
 
 @bp.get("/record/<int:record_id>")
 def get_record(record_id: int):
@@ -122,12 +160,19 @@ def add_record_data():
         data = record_schema.load(request.get_json() or {})
     except ValidationError as e:
         return err("invalid record data", 400, details=e.messages)
+
     user_id = data["user_id"]
     category_id = data["category_id"]
+
     if User.query.get(user_id) is None:
         return err(f"user_id {user_id} not found", 404)
-    if Category.query.get(category_id) is None:
+
+    category = Category.query.get(category_id)
+    if category is None:
         return err(f"category_id {category_id} not found", 404)
+    if not (category.owner_id is None or category.owner_id == user_id):
+        return err("category is not visible for this user", 400)
+
     record = Record(
         user_id=user_id,
         category_id=category_id,
