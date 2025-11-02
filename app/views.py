@@ -1,182 +1,183 @@
-
-
-from flask import request, jsonify
-from . import app
+from flask import Blueprint, request, jsonify
+from marshmallow import ValidationError
 from zoneinfo import ZoneInfo
-from . import storage
 from datetime import datetime
 
-def err(message,status =400,**extra):
-    return jsonify({"error":message,**extra}),status
-def str_valid(s:object) -> str:
-    if not isinstance(s, str):
-        raise ValueError("must be a string")
-    s = s.strip()
-    if not s:
-        raise ValueError("cannot be empty")
-    if len(s) > 256:
-        raise ValueError("too long (max 256)")
-    return s
+from . import db
+from . import schemas
+from .models import User, Category, Record
 
-def int_valid(x)->int:
-    if x is None:
-        raise ValueError("not enough data")
-    try:
-        return int(x)
-    except (TypeError, ValueError):
-        raise ValueError("must be an integer")
+bp = Blueprint("api", __name__)
 
-def float_valid(x)->float:
-    if x is None:
-        raise ValueError("not enough data")
-    try:
-        return float(x)
-    except (TypeError, ValueError):
-        raise ValueError("must be a float")
+user_schema       = schemas.User_Schema()
+users_schema      = schemas.User_Schema(many=True)
+category_schema   = schemas.Category_Schema()
+categories_schema = schemas.Category_Schema(many=True)
+record_schema     = schemas.Record_Schema()
+records_schema    = schemas.Record_Schema(many=True)
 
-def time_valid(x) -> str:
-    if not isinstance(x, str):
-        raise ValueError("datetime must be an ISO-8601 string")
-    s = x.strip()
-    if not s:
-        raise ValueError("datetime cannot be empty")
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        raise ValueError("must be ISO-8601, e.g. 2025-11-01T12:34:56Z")
-    return dt.isoformat()
+def err(message, status=400, **extra):
+    return jsonify({"error": message, **extra}), status
 
-@app.route("/")
+@bp.route("/")
 def hello_world():
     return "<p>Hello, it's me amogus!</p>", 200
 
-@app.get("/healthcheck")
+@bp.get("/healthcheck")
 def healthcheck():
-    return jsonify({
-        "status": "OK",
-        "timestamp": datetime.now(ZoneInfo("Europe/Kyiv")).isoformat()
-    }), 200
+    return jsonify({"status": "OK", "timestamp": datetime.now(ZoneInfo("Europe/Kyiv")).isoformat()}), 200
 
-@app.get("/user/<int:user_id>")
-def get_user(user_id:int):
-    user=storage.user_data.get(user_id)
-    if (user is None):
-        return err("user not found",404)
-    return jsonify({"id":user_id,"name":user}), 200
+@bp.get("/user/<int:user_id>")
+def get_user(user_id: int):
+    user = User.query.get(user_id)
+    if user is None:
+        return err("user not found", 404)
+    return jsonify(user_schema.dump({"id": user_id, "name": user.name})), 200
 
-@app.get("/users")
+@bp.get("/users")
 def get_users():
-    return jsonify([{"id": i, "name": name} for i, name in storage.user_data.items()]), 200
+    users = User.query.order_by(User.id.asc()).all()
+    items = [{"id": u.id, "name": u.name} for u in users]
+    return jsonify(users_schema.dump(items)), 200
 
-@app.post("/user")
+@bp.post("/user")
 def add_user():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-    cat_data=request.get_json() or {}
     try:
-        name = str_valid(cat_data.get("name"))
-    except ValueError as e:
-        return err(f"not enough user data: {e}", 400)
-    user_id=max(storage.user_data.keys() or [0]) + 1
-    storage.user_data[user_id]=name
-    return jsonify({"id":user_id, "name":name}), 201
+        data = user_schema.load(request.get_json() or {})
+    except ValidationError as e:
+        return err("invalid user data", 400, details=e.messages)
+    user = User(name=data["name"])
+    db.session.add(user)
+    db.session.commit()
+    user_id = user.id
+    return jsonify(user_schema.dump({"id": user_id, **data})), 201
 
-@app.delete("/user/<int:user_id>")
-def kill_user(user_id:int):
-    name = storage.user_data.pop(user_id, None)
-    if (name is None):
-        return err("user not found",404)
-    return jsonify({"result":f"id: {user_id} successfully deleted","name":name}),200
+@bp.delete("/user/<int:user_id>")
+def kill_user(user_id: int):
+    user = User.query.get(user_id)
+    if user is None:
+        return err("user not found", 404)
+    name = user.name
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"result": f"id: {user_id} successfully deleted", "name": name}), 200
 
-@app.get("/category")
+@bp.get("/category")
 def get_categories():
-    return jsonify([{"id":i, "name":name} for i,name in storage.category_data.items()]),200
+    categories = Category.query.order_by(Category.id.asc()).all()
+    items = [{"id": c.id, "name": c.name} for c in categories]
+    return jsonify(categories_schema.dump(items)), 200
 
-@app.post("/category")
+@bp.post("/category")
 def add_category():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-    cat_data=request.get_json() or {}
     try:
-        name = str_valid(cat_data.get("name"))
-    except ValueError as e:
-        return err(f"not enough category data: {e}", 400)
-    category_id=max(storage.category_data.keys() or [0]) + 1
-    storage.category_data[category_id]=name
-    return jsonify({"id":category_id, "name":name}), 201
+        data = category_schema.load(request.get_json() or {})
+    except ValidationError as e:
+        return err("invalid category data", 400, details=e.messages)
+    category = Category(name=data["name"])
+    db.session.add(category)
+    db.session.commit()
+    category_id = category.id
+    return jsonify(category_schema.dump({"id": category_id, **data})), 201
 
-@app.delete("/category")
+@bp.delete("/category")
 def kill_category():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-    cat_data=request.get_json() or {}
+    payload = request.get_json() or {}
     try:
-        cid=int_valid(cat_data.get("id"))
-    except ValueError as e:
-        return err(str(e), 400)
-    name= storage.category_data.pop(cid,None)
-    if name is None:
-        return err("category not found",404)
+        cid = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return err("id must be an integer", 400)
+    category = Category.query.get(cid)
+    if category is None:
+        return err("category not found", 404)
+    name = category.name
+    db.session.delete(category)
+    db.session.commit()
     return jsonify({"result": f"id: {cid} successfully deleted", "name": name}), 200
 
-@app.get("/record/<int:record_id>")
-def get_record(record_id:int):
-    record=storage.records_data.get(record_id)
-    if (record is None):
-        return err("record not found",404)
-    return jsonify({"id":record_id,"user_id":record["user_id"],"category_id":record["category_id"],"datetime":record["datetime"],"amount":record["amount"]}), 200
+@bp.get("/record/<int:record_id>")
+def get_record(record_id: int):
+    record = Record.query.get(record_id)
+    if record is None:
+        return err("record not found", 404)
+    return jsonify(record_schema.dump({
+        "id": record.id,
+        "user_id": record.user_id,
+        "category_id": record.category_id,
+        "datetime": record.datetime.isoformat(),
+        "amount": record.amount,
+    })), 200
 
-
-@app.delete("/record/<int:record_id>")
-def kill_record(record_id:int):
-    record = storage.records_data.pop(record_id, None)
-    if (record is None):
-        return err("record not found",404)
-    return jsonify({"result":f"id: {record_id} successfully deleted","deleted": {"id": record_id, **record}}),200
-
-@app.post("/record")
+@bp.post("/record")
 def add_record_data():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-    cat_data=request.get_json() or {}
-    try :
-        user_id=int_valid(cat_data.get("user_id"))
-        category_id=int_valid(cat_data.get("category_id"))
-    except ValueError as e:
-        return err(str(e), 400)
-    try :
-        amount=float_valid(cat_data.get("amount"))
-    except ValueError as e:
-        return err(str(e), 400)
     try:
-        date_time=time_valid(cat_data.get("datetime"))
-    except ValueError as e:
-        return err(str(e), 400)
-    if user_id not in storage.user_data:
+        data = record_schema.load(request.get_json() or {})
+    except ValidationError as e:
+        return err("invalid record data", 400, details=e.messages)
+    user_id = data["user_id"]
+    category_id = data["category_id"]
+    if User.query.get(user_id) is None:
         return err(f"user_id {user_id} not found", 404)
-    if category_id not in storage.category_data:
+    if Category.query.get(category_id) is None:
         return err(f"category_id {category_id} not found", 404)
+    record = Record(
+        user_id=user_id,
+        category_id=category_id,
+        datetime=data["datetime"],
+        amount=float(data["amount"]),
+    )
+    db.session.add(record)
+    db.session.commit()
+    record_id = record.id
+    payload = {
+        "user_id": user_id,
+        "category_id": category_id,
+        "datetime": record.datetime.isoformat(),
+        "amount": record.amount,
+    }
+    return jsonify(record_schema.dump({"id": record_id, **payload})), 201
 
-    record_id=max(storage.records_data.keys() or [0]) + 1
-    input_data={"user_id":user_id,"category_id":category_id,"datetime":date_time,"amount":amount}
-    storage.records_data[record_id]=input_data
-    return jsonify({"id": record_id, **input_data}), 201
+@bp.delete("/record/<int:record_id>")
+def kill_record(record_id: int):
+    record = Record.query.get(record_id)
+    if record is None:
+        return err("record not found", 404)
+    rec = {
+        "user_id": record.user_id,
+        "category_id": record.category_id,
+        "datetime": record.datetime.isoformat(),
+        "amount": record.amount,
+    }
+    db.session.delete(record)
+    db.session.commit()
+    return jsonify({"result": f"id: {record_id} successfully deleted",
+                    "deleted": record_schema.dump({"id": record_id, **rec})}), 200
 
-@app.get("/record")
+@bp.get("/record")
 def find_record_data():
     uid = request.args.get("user_id", type=int)
     cid = request.args.get("category_id", type=int)
     if uid is None and cid is None:
         return err("provide user_id and/or category_id")
-
-    items = [
-        {"id": i, **rec}
-        for i, rec in storage.records_data.items()
-        if (uid is None or rec["user_id"] == uid)
-        and (cid is None or rec["category_id"] == cid)
-    ]
-    return jsonify({"items": items, "count": len(items)}), 200
-
-
+    q = Record.query
+    if uid is not None:
+        q = q.filter_by(user_id=uid)
+    if cid is not None:
+        q = q.filter_by(category_id=cid)
+    rows = q.order_by(Record.id.asc()).all()
+    items = [{
+        "id": r.id,
+        "user_id": r.user_id,
+        "category_id": r.category_id,
+        "datetime": r.datetime.isoformat(),
+        "amount": r.amount,
+    } for r in rows]
+    return jsonify({"items": records_schema.dump(items), "count": len(items)}), 200
