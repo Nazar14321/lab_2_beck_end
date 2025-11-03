@@ -83,18 +83,13 @@ def get_categories():
 def add_category():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
+
     try:
         data = category_schema.load(request.get_json() or {})
     except ValidationError as e:
         return err("invalid category data", 400, details=e.messages)
-    payload = request.get_json() or {}
-    if "user_id" not in payload or payload.get("user_id") is None:
-        owner_id = None
-    else:
-        try:
-            owner_id = int(payload.get("user_id"))
-        except (TypeError, ValueError):
-            return err("user_id must be an integer", 400)
+    owner_id = data.get("user_id")  # може бути None (глобальна категорія)
+    if owner_id is not None:
         if User.query.get(owner_id) is None:
             return err(f"user_id {owner_id} not found", 404)
     category = Category(name=data["name"], owner_id=owner_id)
@@ -104,8 +99,13 @@ def add_category():
     except IntegrityError:
         db.session.rollback()
         return err("category with this name already exists in scope", 409)
-    category_id = category.id
-    return jsonify(category_schema.dump({"id": category_id, "name": category.name, "owner_id": owner_id})), 201
+
+    return jsonify(category_schema.dump({
+        "id": category.id,
+        "name": category.name,
+        "owner_id": owner_id
+    })), 201
+
 @bp.delete("/category")
 def kill_category():
     if not request.is_json:
