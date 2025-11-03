@@ -148,7 +148,7 @@ def get_record(record_id: int):
         "id": record.id,
         "user_id": record.user_id,
         "category_id": record.category_id,
-        "datetime": record.datetime.isoformat(),
+        "datetime": record.datetime,
         "amount": record.amount,
     })), 200
 
@@ -185,7 +185,7 @@ def add_record_data():
     payload = {
         "user_id": user_id,
         "category_id": category_id,
-        "datetime": record.datetime.isoformat(),
+        "datetime": record.datetime,
         "amount": record.amount,
     }
     return jsonify(record_schema.dump({"id": record_id, **payload})), 201
@@ -198,7 +198,7 @@ def kill_record(record_id: int):
     rec = {
         "user_id": record.user_id,
         "category_id": record.category_id,
-        "datetime": record.datetime.isoformat(),
+        "datetime": record.datetime,
         "amount": record.amount,
     }
     db.session.delete(record)
@@ -222,7 +222,7 @@ def find_record_data():
         "id": r.id,
         "user_id": r.user_id,
         "category_id": r.category_id,
-        "datetime": r.datetime.isoformat(),
+        "datetime": r.datetime,
         "amount": r.amount,
     } for r in rows]
     return jsonify({"items": records_schema.dump(items), "count": len(items)}), 200
