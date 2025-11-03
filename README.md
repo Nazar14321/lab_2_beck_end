@@ -12,7 +12,7 @@
 
 2)Зібрати та засіяти базу данних за допомогою докера(docker compose exec app flask db upgrade,docker compose exec app flask seed) .
 
-3) Зібрати та запустити докер (docker compose up -d --build).
+3)Зібрати та запустити докер (docker compose up -d --build).
 
 4)Відкрити в браузері http://127.0.0.1:6060/ та http://127.0.0.1:6060/health для перевірки роботи.
 
