@@ -3,4 +3,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN python -m pip install -r requirements.txt
 COPY . /app
-CMD flask --app app run -h 0.0.0.0 -p $PORT
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+CMD ["/entrypoint.sh"]
