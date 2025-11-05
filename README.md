@@ -10,7 +10,7 @@
 
 1)Склонувати проект.(git clone ,cd дерикторія проекту)
 
-2)Зібрати та засіяти базу данних за допомогою докера(docker compose exec app flask db upgrade,docker compose exec app flask seed) .
+2)Зібрати та засіяти базу данних за допомогою докера  docker compose up --build.
 
 3)Зібрати та запустити докер (docker compose up -d --build).
 
@@ -45,4 +45,4 @@ GET/DELETE /record/{id}
 
 Або також можна відвідати вже розгорнутий варіант:
 
-https://lab-2-beck-end.onrender.com/
+ https://lab-2-beck-end-2.onrender.com
