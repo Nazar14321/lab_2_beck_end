@@ -11,12 +11,18 @@ from .models import User, Category, Record
 
 bp = Blueprint("api", __name__)
 
-user_schema       = schemas.User_Schema()
-users_schema      = schemas.User_Schema(many=True)
-category_schema   = schemas.Category_Schema()
+user_schema = schemas.User_Schema()
+users_schema = schemas.User_Schema(many=True)
+category_schema = schemas.Category_Schema()
 categories_schema = schemas.Category_Schema(many=True)
-record_schema     = schemas.Record_Schema()
-records_schema    = schemas.Record_Schema(many=True)
+record_schema = schemas.Record_Schema()
+records_schema = schemas.Record_Schema(many=True)
+
+category_delete_schema = schemas.CategoryDeleteSchema()
+category_query_schema = schemas.CategoryQuerySchema()
+record_query_schema = schemas.RecordQuerySchema()
+user_id_path_schema = schemas.UserIdPathSchema()
+record_id_path_schema = schemas.RecordIdPathSchema()
 
 def err(message, status=400, **extra):
     return jsonify({"error": message, **extra}), status
@@ -58,23 +64,30 @@ def add_user():
 
 @bp.delete("/user/<int:user_id>")
 def kill_user(user_id: int):
-    user = User.query.get(user_id)
+    try:
+        args = user_id_path_schema.load({"user_id": user_id})
+    except ValidationError as e:
+        return err("invalid path parameter", 400, details=e.messages)
+    uid = args["user_id"]
+    user = User.query.get(uid)
     if user is None:
         return err("user not found", 404)
     name = user.name
     db.session.delete(user)
     db.session.commit()
-    return jsonify({"result": f"id: {user_id} successfully deleted", "name": name}), 200
-
+    return jsonify({"result": f"id: {uid} successfully deleted", "name": name}), 200
 
 @bp.get("/category")
 def get_categories():
-    uid = request.args.get("user_id", type=int)
+    try:
+        args = category_query_schema.load(request.args)
+    except ValidationError as e:
+        return err("invalid query", 400, details=e.messages)
+    uid = args.get("user_id")
     if uid is None:
         q = Category.query.filter(Category.owner_id.is_(None))
     else:
         q = Category.query.filter(or_(Category.owner_id.is_(None), Category.owner_id == uid))
-
     categories = q.order_by(Category.owner_id.isnot(None), Category.name.asc()).all()
     items = [{"id": c.id, "name": c.name, "owner_id": c.owner_id} for c in categories]
     return jsonify(categories_schema.dump(items)), 200
@@ -83,15 +96,13 @@ def get_categories():
 def add_category():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-
     try:
         data = category_schema.load(request.get_json() or {})
     except ValidationError as e:
         return err("invalid category data", 400, details=e.messages)
-    owner_id = data.get("user_id")  # може бути None (глобальна категорія)
-    if owner_id is not None:
-        if User.query.get(owner_id) is None:
-            return err(f"user_id {owner_id} not found", 404)
+    owner_id = data.get("user_id")
+    if owner_id is not None and User.query.get(owner_id) is None:
+        return err(f"user_id {owner_id} not found", 404)
     category = Category(name=data["name"], owner_id=owner_id)
     db.session.add(category)
     try:
@@ -99,7 +110,6 @@ def add_category():
     except IntegrityError:
         db.session.rollback()
         return err("category with this name already exists in scope", 409)
-
     return jsonify(category_schema.dump({
         "id": category.id,
         "name": category.name,
@@ -110,25 +120,22 @@ def add_category():
 def kill_category():
     if not request.is_json:
         return err("Content-Type must be application/json", 415)
-    payload = request.get_json() or {}
     try:
-        cid = int(payload.get("id"))
-    except (TypeError, ValueError):
-        return err("id must be an integer", 400)
+        payload = category_delete_schema.load(request.get_json() or {})
+    except ValidationError as e:
+        return err("invalid category data", 400, details=e.messages)
+    cid = payload["id"]
+    uid = payload.get("user_id")
     category = Category.query.get(cid)
     if category is None:
         return err("category not found", 404)
-    if "user_id" not in payload or payload.get("user_id") is None:
+    if uid is None:
         if category.owner_id is None:
             name = category.name
             db.session.delete(category)
             db.session.commit()
             return jsonify({"result": f"id: {cid} successfully deleted", "name": name}), 200
         return err("user_id is required to delete personal category", 400)
-    try:
-        uid = int(payload.get("user_id"))
-    except (TypeError, ValueError):
-        return err("user_id must be an integer", 400)
     if category.owner_id is None:
         return err("to delete a global category omit user_id in request body", 403)
     if uid != category.owner_id:
@@ -137,7 +144,6 @@ def kill_category():
     db.session.delete(category)
     db.session.commit()
     return jsonify({"result": f"id: {cid} successfully deleted", "name": name}), 200
-
 
 @bp.get("/record/<int:record_id>")
 def get_record(record_id: int):
@@ -160,24 +166,20 @@ def add_record_data():
         data = record_schema.load(request.get_json() or {})
     except ValidationError as e:
         return err("invalid record data", 400, details=e.messages)
-
     user_id = data["user_id"]
     category_id = data["category_id"]
-
     if User.query.get(user_id) is None:
         return err(f"user_id {user_id} not found", 404)
-
     category = Category.query.get(category_id)
     if category is None:
         return err(f"category_id {category_id} not found", 404)
     if not (category.owner_id is None or category.owner_id == user_id):
         return err("category is not visible for this user", 400)
-
     record = Record(
         user_id=user_id,
         category_id=category_id,
         datetime=data["datetime"],
-        amount=float(data["amount"]),
+        amount=data["amount"],
     )
     db.session.add(record)
     db.session.commit()
@@ -192,7 +194,12 @@ def add_record_data():
 
 @bp.delete("/record/<int:record_id>")
 def kill_record(record_id: int):
-    record = Record.query.get(record_id)
+    try:
+        args = record_id_path_schema.load({"record_id": record_id})
+    except ValidationError as e:
+        return err("invalid path parameter", 400, details=e.messages)
+    rid = args["record_id"]
+    record = Record.query.get(rid)
     if record is None:
         return err("record not found", 404)
     rec = {
@@ -203,15 +210,19 @@ def kill_record(record_id: int):
     }
     db.session.delete(record)
     db.session.commit()
-    return jsonify({"result": f"id: {record_id} successfully deleted",
-                    "deleted": record_schema.dump({"id": record_id, **rec})}), 200
+    return jsonify({
+        "result": f"id: {rid} successfully deleted",
+        "deleted": record_schema.dump({"id": rid, **rec})
+    }), 200
 
 @bp.get("/record")
 def find_record_data():
-    uid = request.args.get("user_id", type=int)
-    cid = request.args.get("category_id", type=int)
-    if uid is None and cid is None:
-        return err("provide user_id and/or category_id")
+    try:
+        args = record_query_schema.load(request.args)
+    except ValidationError as e:
+        return err("invalid query", 400, details=e.messages)
+    uid = args.get("user_id")
+    cid = args.get("category_id")
     q = Record.query
     if uid is not None:
         q = q.filter_by(user_id=uid)

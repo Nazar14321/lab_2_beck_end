@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate, pre_load
+from marshmallow import Schema, fields, validate, pre_load, validates_schema, ValidationError
 
 class User_Schema(Schema):
     id = fields.Int(dump_only=True)
@@ -22,3 +22,25 @@ class Record_Schema(Schema):
         if isinstance(dt, str) and dt.strip().endswith(("Z", "z")):
             data["datetime"] = dt.strip()[:-1] + "+00:00"
         return data
+
+class CategoryDeleteSchema(Schema):
+    id = fields.Int(required=True)
+    user_id = fields.Int(allow_none=True, load_default=None)
+
+class CategoryQuerySchema(Schema):
+    user_id = fields.Int(allow_none=True, load_default=None)
+
+class RecordQuerySchema(Schema):
+    user_id = fields.Int(allow_none=True, load_default=None)
+    category_id = fields.Int(allow_none=True, load_default=None)
+
+    @validates_schema
+    def at_least_one(self, data, **kwargs):
+        if data.get("user_id") is None and data.get("category_id") is None:
+            raise ValidationError("provide user_id and/or category_id")
+
+class UserIdPathSchema(Schema):
+    user_id = fields.Int(required=True)
+
+class RecordIdPathSchema(Schema):
+    record_id = fields.Int(required=True)

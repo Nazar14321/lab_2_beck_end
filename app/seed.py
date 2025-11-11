@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import text
-from .models import db, User, Category, Record
-
+from .models import  User, Category, Record
+from . import db
 USER_DATA = {
     1: "Vasya",
     2: "Petya",
