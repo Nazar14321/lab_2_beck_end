@@ -1,10 +1,6 @@
 Група ІО-32
 
-Варіант 2
-
-Для користувацьких категорій витрат - повинні бути загальні
-категорії витрат, які видно всім користувачам, та користувацькі, які
-можуть вказати тільки користувачі, які їх визначили.(відповідно до варіанту були модифіковані POST /category, GET /category,DELETE /category (body: {"id": <int>}),GET /record/)
+Lab4 
 
 Доброго дня, для запуску проекту локально необхідно:
 
@@ -16,31 +12,29 @@
 
 Ендпоінти 
 
-GET /
+GET /                                      (не захищено)
 
-GET /healthcheck ;
+GET /healthcheck ;                         (не захищено)
 
-POST /user ;
+POST /login ;                              (не захищено)
 
-GET /users ;
+POST /user ;                               (не захищено)
 
-GET/DELETE /user/{id};
+GET /users ;                               (захищено)
 
-POST /category ;
+GET/DELETE /user/{id};                     (захищено)
 
-GET /category ;
+POST /category ;                           (захищено)  
 
-DELETE /category (body: {"id": <int>})
+GET /category?user_id= ;                   (захищено)  
 
-POST /record ;
+DELETE /category ;                         (захищено)  
 
-GET /record?user_id=&category_id= 
+POST /record ;                             (захищено)  
 
-GET /record/{id}
+GET /record?user_id=&category_id=          (захищено)  
 
-GET/DELETE /record/{id}
+GET /record/{id}                           (захищено)  
 
+GET /DELETE /record/{id}                   (захищено)  
 
-Або також можна відвідати вже розгорнутий варіант:
-
- https://lab-2-beck-end-2.onrender.com
