@@ -1,8 +1,13 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import text
-from .models import  User, Category, Record
+
+from passlib.hash import pbkdf2_sha256
+
+from .models import User, Category, Record
 from . import db
+
+
 USER_DATA = {
     1: "Vasya",
     2: "Petya",
@@ -26,6 +31,7 @@ RECORDS_DATA = {
     5: {"user_id": 2, "category_id": 1, "datetime": "2025-10-19 13:22:47", "amount": 89.90},
 }
 
+
 def run_seed(reset: bool = False):
     if reset:
         db.session.execute(
@@ -33,8 +39,16 @@ def run_seed(reset: bool = False):
         )
         db.session.commit()
 
+    password_hash = pbkdf2_sha256.hash("testpass123")
+
     for uid, name in USER_DATA.items():
-        db.session.merge(User(id=uid, name=name))
+        db.session.merge(
+            User(
+                id=uid,
+                name=name,
+                password=password_hash,
+            )
+        )
 
     for cid, name in CATEGORY_DATA.items():
         db.session.merge(Category(id=cid, name=name, owner_id=None))
@@ -55,9 +69,13 @@ def run_seed(reset: bool = False):
     db.session.commit()
 
     for table in ("users", "categories", "records"):
-        db.session.execute(text(f"""
+        db.session.execute(
+            text(
+                f"""
             SELECT setval(pg_get_serial_sequence('{table}','id'),
                           COALESCE(MAX(id), 0) + 1, false)
             FROM {table};
-        """))
+        """
+            )
+        )
     db.session.commit()

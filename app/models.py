@@ -1,11 +1,16 @@
 from . import db
 from sqlalchemy import text
+
+
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(256), nullable=False)
+    password = db.Column(db.String(256), nullable=False)
+
     records = db.relationship("Record", back_populates="user", cascade="all, delete-orphan")
     owner_of_category = db.relationship("Category", back_populates="owner", cascade="all, delete-orphan")
+
 
 class Category(db.Model):
     __tablename__ = "categories"
@@ -16,15 +21,30 @@ class Category(db.Model):
     records = db.relationship("Record", back_populates="category", cascade="all, delete-orphan")
     __table_args__ = (
         db.UniqueConstraint("owner_id", "name", name="uq_category_user_name"),
-        db.Index("Index_category_global_name", "name", unique=True,
-                 postgresql_where=text("owner_id IS NULL")),
+        db.Index(
+            "Index_category_global_name",
+            "name",
+            unique=True,
+            postgresql_where=text("owner_id IS NULL"),
+        ),
     )
+
 
 class Record(db.Model):
     __tablename__ = "records"
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    category_id = db.Column(db.Integer, db.ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id = db.Column(
+        db.Integer,
+        db.ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     datetime = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     amount = db.Column(db.Float, nullable=False)
 
